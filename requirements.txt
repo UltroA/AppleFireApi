@@ -4,4 +4,5 @@ python-dotenv~=1.2.3
 pwdlib~=0.3.1
 pydantic~=2.13.5
 psycopg~=3.3.6
+psycopg-pool
 pytest~=9.1.1
