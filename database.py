@@ -1,29 +1,31 @@
 import psycopg
 
+from models import UserReg
+
 
 def create_table_users(cursor: psycopg.cursor) -> bool:
     try:
         cursor.execute("""
                     CREATE TABLE IF NOT EXISTS
                     users (
-                    name text PRIMARY KEY NOT NULL,
-                    email text UNIQUE NOT NULL,
-                    password text NOT NULL
+                    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+                    name VARCHAR(16) UNIQUE NOT NULL,
+                    email VARCHAR(32) UNIQUE NOT NULL,
+                    password VARCHAR(128) NOT NULL
                     );
                 """)
-        print("SYSTEM: CREATED TABLE USERS")
     except Exception as e:
         print(e)
         return False
     return True
 
 
-def create_user(cursor: psycopg.cursor, name: str, email: str, password: str) -> bool:
+def create_user(cursor: psycopg.cursor, user: UserReg) -> bool:
     try:
         cursor.execute(f"""
             INSERT INTO users (name, email, password)
             VALUES (%s, %s, %s);
-        """, (name, email, password))
+        """, (user.username, user.email, user.password))
         return True
     except Exception as e:
         print(e)

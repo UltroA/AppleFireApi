@@ -6,8 +6,10 @@ __pycache__/
 .DS_Store
 
 # Useless files
+docs/
 playgrounf.py
 .env
 
 # Small debug http requests
 bruno/
+
