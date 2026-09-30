@@ -1,0 +1,13 @@
+# Python and pycharm
+.idea/
+__pycache__/
+
+# MacOS
+.DS_Store
+
+# Useless files
+playgrounf.py
+.env
+
+# Small debug http requests
+bruno/
