@@ -1,70 +1,65 @@
 from fastapi import FastAPI, HTTPException
+from contextlib import asynccontextmanager
+from psycopg_pool import ConnectionPool
 from dotenv import load_dotenv
+from pwdlib import PasswordHash
 
 import uvicorn
-import psycopg
 import os
 
 import models
 import database
 
-app = FastAPI()
-
 load_dotenv()
-DEBUG = bool(os.getenv("DEBUG"))
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+DB_DSN = os.getenv("DATABASE_URL", "dbname=postgres user=postgres")
+
+
+pool = ConnectionPool(DB_DSN, open=False)
+passwordHash = PasswordHash.recommended()
+ANTI_TIME_HASH = passwordHash.hash("not-a-real-password")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    pool.open()
+    with pool.connection() as conn, conn.cursor() as cursor:
+        database.create_table_users(cursor)
+    yield
+    pool.close()
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.get("/")
 async def read_root():
-    return {"DEBUG MODE" if DEBUG else "Hi nerd!"}
+    return {"message": "DEBUG MODE" if DEBUG else "Hi nerd!"}
 
 
 @app.post("/reg/")
 async def reg_user(user: models.UserReg):
-    if not (3 <= len(user.username) < 16):
-        raise HTTPException(status_code=413, detail="Username must be less than 16 characters or more than 3")
-    if not ((6 < len(user.email) < 32)
-            and "@" in user.email
-            and "." in user.email):
-        raise HTTPException(status_code=413, detail="Email must be between 6 and 20")
-    if not (sum(1 for char in user.password if char.isdigit()) >= 3
-            and sum(1 for char in user.password if char.isalpha()) >= 3
-            and sum(1 for char in user.password if char.isupper()) >= 1):
-        raise HTTPException(status_code=413, detail="Password must be at least 6 characters long and have 3 numbers "
-                                                    "in it")
-    try:
-        with psycopg.connect(dbname="postgres", user="postgres") as conn:
-            with conn.cursor() as cursor:
-                if database.create_table_users(cursor):
-                    print("SYSTEM: CREATED TABLE USERS")
+    hashed_password = passwordHash.hash(user.password)
 
-                database.create_user(cursor, user)
-                cursor.execute("SELECT * FROM users;")
-                conn.commit()
-        return {True}
-    except Exception:
-        raise HTTPException(status_code=400, detail="User already exists")
+    with pool.connection() as conn, conn.cursor() as cursor:
+        user_id = database.create_user(cursor, user.username, user.email.lower(), hashed_password)
+
+    if user_id is None:
+        raise HTTPException(status_code=409, detail="User already exists")
+
+    return {"success": True}
 
 
 @app.post("/login/")
-async def login_user(user: models.User):
-    try:
-        with psycopg.connect(dbname="postgres", user="postgres") as conn:
-            with conn.cursor() as cursor:
-                pwd = database.seach_by_name(cursor, user.username)
-                if pwd == user.password:
-                    return {True}
-    except Exception as e:
-        print(e)
-        if DEBUG:
-            return {False, e}
-    raise HTTPException(status_code=403, detail="Wrong username or password")
+async def login_user(user: models.UserLog):
+    with pool.connection() as conn, conn.cursor() as cursor:
+        stored_hash = database.search_by_email(cursor, user.email.lower())
 
+    valid = passwordHash.verify(user.password, stored_hash or ANTI_TIME_HASH)
+
+    if stored_hash is None or not valid:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    return {"success": True}
 
 if __name__ == "__main__":
-    if DEBUG:
-        with psycopg.connect(dbname="postgres", user="postgres") as conn:
-            with conn.cursor() as cursor:
-                database.drop_table(cursor, "users")
-        print("DEBUG MODE")
     uvicorn.run(app, host="0.0.0.0", port=8000)

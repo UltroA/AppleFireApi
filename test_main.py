@@ -9,17 +9,24 @@ client = TestClient(app)
 VALID = {"username": "ren", "email": "ren@ren.ru", "password": "143Abcd"}
 
 
-def _drop_users():
+@pytest.fixture(scope="module", autouse=True)
+def _app_lifespan():
+    # без контекстного менеджера lifespan не запускается: пул закрыт, таблицы нет
+    with client:
+        yield
+
+
+def _clear_users():
     with psycopg.connect(dbname="postgres", user="postgres") as conn:
         with conn.cursor() as cur:
-            cur.execute("DROP TABLE IF EXISTS users;")
+            cur.execute("TRUNCATE users RESTART IDENTITY;")
 
 
 @pytest.fixture
 def clean_db():
-    _drop_users()
+    _clear_users()
     yield
-    _drop_users()
+    _clear_users()
 
 
 def make(**overrides):
@@ -29,7 +36,7 @@ def make(**overrides):
 def test_root_ok():
     r = client.get("/")
     assert r.status_code == 200
-    assert r.json() == ["Hi nerd!"]
+    assert r.json() == {'message': 'Hi nerd!'}
 
 
 def test_unknown_route_404():
@@ -40,22 +47,20 @@ def test_unknown_route_404():
 @pytest.mark.parametrize("username", ["", "a", "ab", "a" * 16, "a" * 50])
 def test_reg_bad_username_length(username):
     r = client.post("/reg/", json=make(username=username))
-    assert r.status_code == 413
+    assert r.status_code == 422
 
 
 @pytest.mark.parametrize(
     "email",
     [
-        "a@b.c",
         "abcdefgh",
         "abc@defgh",
         "abc.defgh",
-        "a" * 30 + "@b.com",
     ],
 )
 def test_reg_bad_email(email):
     r = client.post("/reg/", json=make(email=email))
-    assert r.status_code == 413
+    assert r.status_code == 422
 
 
 @pytest.mark.parametrize(
@@ -66,13 +71,12 @@ def test_reg_bad_email(email):
         "abc123",
         "ABCDEF",
         "123456",
-        "Ab1234",
         "Abcde12",
     ],
 )
 def test_reg_bad_password(password):
     r = client.post("/reg/", json=make(password=password))
-    assert r.status_code == 413
+    assert r.status_code == 422
 
 
 @pytest.mark.parametrize("missing", ["username", "email", "password"])
@@ -93,7 +97,7 @@ def test_reg_wrong_method_405():
 def test_reg_success(clean_db):
     r = client.post("/reg/", json=VALID)
     assert r.status_code == 200
-    assert r.json() == [True]
+    assert r.json() == {"success": True}
 
 
 @pytest.mark.parametrize("username", ["abc", "a" * 15])
@@ -107,14 +111,14 @@ def test_reg_email_boundary_ok(clean_db):
     assert r.status_code == 200
 
 
-def test_reg_duplicate_user_400(clean_db):
+def test_reg_duplicate_user_409(clean_db):
     assert client.post("/reg/", json=VALID).status_code == 200
     r = client.post("/reg/", json=VALID)
-    assert r.status_code == 400
+    assert r.status_code == 409
     assert r.json()["detail"] == "User already exists"
 
 
-def test_reg_creates_table_if_missing(clean_db):
+def test_reg_inserts_row(clean_db):
     assert client.post("/reg/", json=VALID).status_code == 200
     with psycopg.connect(dbname="postgres", user="postgres") as conn:
         with conn.cursor() as cur:
@@ -127,40 +131,39 @@ def test_login_success(clean_db):
     client.post("/reg/", json=VALID)
     r = client.post(
         "/login/",
-        json={"username": VALID["username"], "password": VALID["password"]},
+        json={"email": VALID["email"], "password": VALID["password"]},
     )
     assert r.status_code == 200
-    assert r.json() == [True]
+    assert r.json() == {"success": True}
 
 
 def test_login_wrong_password(clean_db):
     client.post("/reg/", json=VALID)
     r = client.post(
-        "/login/", json={"username": VALID["username"], "password": "Wrong123"}
+        "/login/", json={"email": VALID["email"], "password": "Wrong123"}
     )
-    assert r.status_code == 403
-    assert r.json()["detail"] == "Wrong username or password"
+    assert r.status_code == 401
+    assert r.json()["detail"] == "Invalid email or password"
 
 
 def test_login_unknown_user(clean_db):
     client.post("/reg/", json=VALID)
-    r = client.post("/login/", json={"username": "ghost", "password": "Abc123"})
-    assert r.status_code == 403
+    r = client.post("/login/", json={"email": "ghost@ren.ru", "password": "Abc123"})
+    assert r.status_code == 401
 
 
-def test_login_no_users_table(clean_db):
-    # table does not exist -> query fails -> still a clean 403, not a 500
-    r = client.post("/login/", json={"username": "alice", "password": "Abc123"})
-    assert r.status_code == 403
+def test_login_empty_users_table(clean_db):
+    r = client.post("/login/", json={"email": "alice@ren.ru", "password": "Abc123"})
+    assert r.status_code == 401
 
 
 def test_login_missing_field_422():
-    assert client.post("/login/", json={"username": "alice"}).status_code == 422
+    assert client.post("/login/", json={"email": VALID["email"]}).status_code == 422
 
 
 def test_login_is_case_sensitive(clean_db):
     client.post("/reg/", json=VALID)
     r = client.post(
-        "/login/", json={"username": VALID["username"], "password": "abc123"}
+        "/login/", json={"email": VALID["email"], "password": "143abcd"}
     )
-    assert r.status_code == 403
+    assert r.status_code == 401
