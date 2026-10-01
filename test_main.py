@@ -130,40 +130,63 @@ def test_reg_inserts_row(clean_db):
 def test_login_success(clean_db):
     client.post("/reg/", json=VALID)
     r = client.post(
-        "/login/",
-        json={"email": VALID["email"], "password": VALID["password"]},
+        "/token",
+        data={"username": VALID["email"], "password": VALID["password"]},
     )
     assert r.status_code == 200
-    assert r.json() == {"success": True, "UserID": 1}
+    assert r.json()["token_type"] == "bearer"
+    assert "access_token" in r.json()
 
 
 def test_login_wrong_password(clean_db):
     client.post("/reg/", json=VALID)
     r = client.post(
-        "/login/", json={"email": VALID["email"], "password": "Wrong123"}
+        "/token", data={"username": VALID["email"], "password": "Wrong123"}
     )
     assert r.status_code == 401
-    assert r.json()["detail"] == "Invalid password"
+    assert r.json()["detail"] == "Invalid email or password"
 
 
 def test_login_unknown_user(clean_db):
     client.post("/reg/", json=VALID)
-    r = client.post("/login/", json={"email": "ghost@ren.ru", "password": "Abc123"})
+    r = client.post("/token", data={"username": "ghost@ren.ru", "password": "Abc123"})
     assert r.status_code == 401
 
 
 def test_login_empty_users_table(clean_db):
-    r = client.post("/login/", json={"email": "alice@ren.ru", "password": "Abc123"})
+    r = client.post("/token", data={"username": "alice@ren.ru", "password": "Abc123"})
     assert r.status_code == 401
 
 
 def test_login_missing_field_422():
-    assert client.post("/login/", json={"email": VALID["email"]}).status_code == 422
+    assert client.post("/token", data={"username": VALID["email"]}).status_code == 422
 
 
 def test_login_is_case_sensitive(clean_db):
     client.post("/reg/", json=VALID)
     r = client.post(
-        "/login/", json={"email": VALID["email"], "password": "143abcd"}
+        "/token", data={"username": VALID["email"], "password": "143abcd"}
     )
     assert r.status_code == 401
+
+
+# Auth get info test
+def test_me_success(clean_db):
+    client.post("/reg/", json=VALID)
+    token = client.post(
+        "/token",
+        data={"username": VALID["email"], "password": VALID["password"]},
+    ).json()["access_token"]
+    r = client.get("/me", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    assert r.json() == {"user_id": 1}
+
+
+def test_me_no_token_401():
+    assert client.get("/me").status_code == 401
+
+
+def test_me_invalid_token_401():
+    r = client.get("/me", headers={"Authorization": "Bearer not.a.token"})
+    assert r.status_code == 401
+    assert r.json()["detail"] == "Could not validate credentials"

@@ -16,6 +16,3 @@ class UserReg(BaseModel):
         return v
 
 
-class UserLog(BaseModel):
-    email: EmailStr
-    password: str
