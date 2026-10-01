@@ -2,6 +2,11 @@ import psycopg
 
 
 def create_table_users(cursor: psycopg.cursor) -> None:
+    """
+    Creates table users if not exists
+    :param cursor: just psycopg cursor object
+    :return: None
+    """
     cursor.execute("""
                 CREATE TABLE IF NOT EXISTS
                 users (
@@ -14,6 +19,14 @@ def create_table_users(cursor: psycopg.cursor) -> None:
 
 
 def create_user(cursor: psycopg.cursor, username: str, email: str, password: str) -> int | None:
+    """
+    Creates user if not exists
+    :param cursor: just psycopg cursor object
+    :param username: new username to display
+    :param email: user's email
+    :param password: user's password
+    :return: id
+    """
     cursor.execute(f"""
         INSERT INTO users (name, email, password)
         VALUES (%s, %s, %s)
@@ -25,14 +38,15 @@ def create_user(cursor: psycopg.cursor, username: str, email: str, password: str
 
 
 def search_by_email(cursor: psycopg.cursor, email: str) -> list | None:
+    """
+    Search users by email
+    :param cursor: just psycopg cursor object
+    :param email: user's email
+    :return: [userID, password]
+    """
     row = cursor.execute(f"""
             SELECT id, password FROM users 
             WHERE email = %s;
             """, (email, )).fetchone()
     return row if row else None
-
-
-
-def drop_table(cursor: psycopg.cursor, name: str) -> None:
-    cursor.execute(f"DROP TABLE IF EXISTS {name}")
 
