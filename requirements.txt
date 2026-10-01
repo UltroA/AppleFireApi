@@ -8,3 +8,4 @@ psycopg-pool
 httpx
 pytest~=9.1.1
 pyjwt~=2.15.1
+python-multipart
