@@ -97,7 +97,7 @@ def test_reg_wrong_method_405():
 def test_reg_success(clean_db):
     r = client.post("/reg/", json=VALID)
     assert r.status_code == 200
-    assert r.json() == {"success": True}
+    assert r.json() == {'success': True, 'userID': 1}
 
 
 @pytest.mark.parametrize("username", ["abc", "a" * 15])
@@ -134,7 +134,7 @@ def test_login_success(clean_db):
         json={"email": VALID["email"], "password": VALID["password"]},
     )
     assert r.status_code == 200
-    assert r.json() == {"success": True}
+    assert r.json() == {"success": True, "UserID": 1}
 
 
 def test_login_wrong_password(clean_db):
@@ -143,7 +143,7 @@ def test_login_wrong_password(clean_db):
         "/login/", json={"email": VALID["email"], "password": "Wrong123"}
     )
     assert r.status_code == 401
-    assert r.json()["detail"] == "Invalid email or password"
+    assert r.json()["detail"] == "Invalid password"
 
 
 def test_login_unknown_user(clean_db):

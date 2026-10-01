@@ -24,12 +24,13 @@ def create_user(cursor: psycopg.cursor, username: str, email: str, password: str
     return row[0] if row else None
 
 
-def search_by_email(cursor: psycopg.cursor, email: str) -> str | None:
+def search_by_email(cursor: psycopg.cursor, email: str) -> list | None:
     row = cursor.execute(f"""
-            SELECT password FROM users 
+            SELECT id, password FROM users 
             WHERE email = %s;
             """, (email, )).fetchone()
-    return row[0] if row else None
+    return row if row else None
+
 
 
 def drop_table(cursor: psycopg.cursor, name: str) -> None:

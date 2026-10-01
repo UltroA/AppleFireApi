@@ -46,20 +46,23 @@ async def reg_user(user: models.UserReg):
     if user_id is None:
         raise HTTPException(status_code=409, detail="User already exists")
 
-    return {"success": True}
+    return {"success": True, "userID": user_id}
 
 
 @app.post("/login/")
 async def login_user(user: models.UserLog):
     with pool.connection() as conn, conn.cursor() as cursor:
-        stored_hash = database.search_by_email(cursor, user.email.lower())
-
+        user_info = database.search_by_email(cursor, user.email.lower())
+        if user_info is None:
+            raise HTTPException(status_code=401, detail="Invalid email")
+        id = user_info[0]
+        stored_hash = user_info[1]
     valid = passwordHash.verify(user.password, stored_hash or ANTI_TIME_HASH)
 
-    if stored_hash is None or not valid:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not valid:
+        raise HTTPException(status_code=401, detail="Invalid password")
 
-    return {"success": True}
+    return {"success": True, "UserID": id}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
