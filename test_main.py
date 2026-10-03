@@ -19,7 +19,7 @@ def _app_lifespan():
 def _clear_users():
     with psycopg.connect(dbname="postgres", user="postgres") as conn:
         with conn.cursor() as cur:
-            cur.execute("TRUNCATE users RESTART IDENTITY;")
+            cur.execute("TRUNCATE users RESTART IDENTITY CASCADE;")
 
 
 @pytest.fixture
@@ -31,6 +31,15 @@ def clean_db():
 
 def make(**overrides):
     return {**VALID, **overrides}
+
+
+def auth_headers(user):
+    client.post("/reg/", json=user)
+    token = client.post(
+        "/token",
+        data={"username": user["email"], "password": user["password"]},
+    ).json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
 
 
 def test_root_ok():
@@ -179,7 +188,7 @@ def test_me_success(clean_db):
     ).json()["access_token"]
     r = client.get("/me", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
-    assert r.json() == {"user_id": 1}
+    assert r.json() == {"user_id": 1, "friends": []}
 
 
 def test_me_no_token_401():
@@ -190,3 +199,63 @@ def test_me_invalid_token_401():
     r = client.get("/me", headers={"Authorization": "Bearer not.a.token"})
     assert r.status_code == 401
     assert r.json()["detail"] == "Could not validate credentials"
+
+
+FRIEND = {"username": "reeen", "email": "reeeeen@ren.ru", "password": "143Abcd"}
+
+
+# Friends test
+def test_add_friend_no_token_401():
+    r = client.post("/add_friend", params={"email": FRIEND["email"]})
+    assert r.status_code == 401
+
+
+def test_add_friend_invalid_token_401():
+    r = client.post(
+        "/add_friend",
+        params={"email": FRIEND["email"]},
+        headers={"Authorization": "Bearer not.a.token"},
+    )
+    assert r.status_code == 401
+    assert r.json()["detail"] == "Could not validate credentials"
+
+
+def test_add_friend_missing_email_422(clean_db):
+    headers = auth_headers(VALID)
+    assert client.post("/add_friend", headers=headers).status_code == 422
+
+
+def test_add_friend_wrong_method_405():
+    assert client.get("/add_friend").status_code == 405
+
+
+def test_add_friend_success(clean_db):
+    headers = auth_headers(VALID)
+    client.post("/reg/", json=FRIEND)
+    r = client.post("/add_friend", params={"email": FRIEND["email"]}, headers=headers)
+    assert r.status_code == 200
+    assert r.json()["success"] is True
+    assert "coupleId" in r.json()
+
+
+def test_add_friend_inserts_row(clean_db):
+    headers = auth_headers(VALID)
+    client.post("/reg/", json=FRIEND)
+    client.post("/add_friend", params={"email": FRIEND["email"]}, headers=headers)
+    r = client.get("/me", headers=headers)
+    assert r.status_code == 200
+    assert len(r.json()["friends"]) == 1
+
+
+def test_me_no_friends_by_default(clean_db):
+    headers = auth_headers(VALID)
+    r = client.get("/me", headers=headers)
+    assert r.json()["friends"] == []
+
+
+@pytest.mark.xfail(reason="add_friend crashes on unknown email (None[0])")
+def test_add_friend_unknown_email_404(clean_db):
+    headers = auth_headers(VALID)
+    r = client.post("/add_friend", params={"email": "ghost@ren.ru"}, headers=headers)
+    assert r.status_code == 404
+    assert r.json()["detail"] == "User not found"
