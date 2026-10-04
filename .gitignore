@@ -1,6 +1,7 @@
 # Python and pycharm
 .idea/
 __pycache__/
+.venv/
 
 # MacOS
 .DS_Store
@@ -12,4 +13,3 @@ playgrounf.py
 
 # Small debug http requests
 bruno/
-
