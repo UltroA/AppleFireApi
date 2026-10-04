@@ -1,7 +1,6 @@
 from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 
-from config import DEBUG
 from dependencies import get_current_user_id
 from database.db import pool
 from database import friends as friendsdb
@@ -17,6 +16,8 @@ async def add_friend(user_id: Annotated[int, Depends(get_current_user_id)], emai
         if user_info is None:
             raise HTTPException(status_code=404, detail="User not found")
         father_id = user_info[0]
+        if friendsdb.check_couples_exist(cursor, user_id, father_id):
+            raise HTTPException(status_code=409, detail="Friend already exists")
         couple_id = friendsdb.create_couple(cursor, user_id, father_id)
 
     return {"success": True, "coupleId": couple_id}

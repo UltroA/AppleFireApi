@@ -259,3 +259,19 @@ def test_add_friend_unknown_email_404(clean_db):
     r = client.post("/add_friend", params={"email": "ghost@ren.ru"}, headers=headers)
     assert r.status_code == 404
     assert r.json()["detail"] == "User not found"
+
+def test_add_friend_duplicate_409(clean_db):
+    headers = auth_headers(VALID)
+    client.post("/reg/", json=FRIEND)
+    assert client.post("/add_friend", params={"email": FRIEND["email"]}, headers=headers).status_code == 200
+    r = client.post("/add_friend", params={"email": FRIEND["email"]}, headers=headers)
+    assert r.status_code == 409
+    assert r.json()["detail"] == "Friend already exists"
+
+
+def test_add_friend_duplicate_reverse_409(clean_db):
+    headers = auth_headers(VALID)
+    friend_headers = auth_headers(FRIEND)
+    client.post("/add_friend", params={"email": FRIEND["email"]}, headers=headers)
+    r = client.post("/add_friend", params={"email": VALID["email"]}, headers=friend_headers)
+    assert r.status_code == 409

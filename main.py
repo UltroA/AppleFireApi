@@ -4,6 +4,7 @@ import uvicorn
 
 from database import users as usersdb
 from database import friends as friendsdb
+from database import pets as petsdb
 from database.db import pool
 from routers import auth, users, friends
 
@@ -14,6 +15,7 @@ async def lifespan(app: FastAPI):
     with pool.connection() as conn, conn.cursor() as cursor:
         usersdb.create_table_users(cursor)
         friendsdb.create_table_couples(cursor)
+        petsdb.create_table_pets(cursor)
     yield
     pool.close()
 
