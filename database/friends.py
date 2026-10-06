@@ -56,7 +56,7 @@ def check_couples_exist(cursor: psycopg.cursor, mother_id: int, father_id: int) 
     return count > 0
 
 
-def get_all_couples(cursor: psycopg.cursor, userId: int) -> list[tuple]:
+def get_all_couples(cursor: psycopg.cursor, userId: int) -> list[int]:
     row = cursor.execute("""
             SELECT ALL coupleid FROM couples
             WHERE motherId = %s OR fatherId = %s;
@@ -82,6 +82,6 @@ def get_couple_id(cursor: psycopg.cursor, mother_id: int, father_id: int) -> int
         SELECT coupleId FROM couples
         WHERE motherId = %s AND fatherId = %s
         OR fatherid = %s AND motherId = %s;
-        """, (mother_id, father_id, mother_id, father_id)).fetchone()[0]
+        """, (mother_id, father_id, mother_id, father_id)).fetchone()
 
-    return coupleid if coupleid else None
+    return coupleid[0] if coupleid else None

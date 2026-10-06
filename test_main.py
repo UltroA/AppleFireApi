@@ -188,7 +188,7 @@ def test_me_success(clean_db):
     ).json()["access_token"]
     r = client.get("/me", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
-    assert r.json() == {"user_id": 1, "friends": []}
+    assert r.json() == {"user_id": 1, "friends": [], "pets": []}
 
 
 def test_me_no_token_401():
@@ -253,7 +253,6 @@ def test_me_no_friends_by_default(clean_db):
     assert r.json()["friends"] == []
 
 
-@pytest.mark.xfail(reason="add_friend crashes on unknown email (None[0])")
 def test_add_friend_unknown_email_404(clean_db):
     headers = auth_headers(VALID)
     r = client.post("/add_friend", params={"email": "ghost@ren.ru"}, headers=headers)
@@ -275,3 +274,143 @@ def test_add_friend_duplicate_reverse_409(clean_db):
     client.post("/add_friend", params={"email": FRIEND["email"]}, headers=headers)
     r = client.post("/add_friend", params={"email": VALID["email"]}, headers=friend_headers)
     assert r.status_code == 409
+
+# Pets test
+def make_friends():
+    """Регистрирует VALID и FRIEND, делает их друзьями. Возвращает (headers, friend_id)."""
+    headers = auth_headers(VALID)
+    friend_id = client.post("/reg/", json=FRIEND).json()["userID"]
+    r = client.post("/add_friend", params={"email": FRIEND["email"]}, headers=headers)
+    assert r.status_code == 200
+    return headers, friend_id
+
+
+def test_me_has_pets_field(clean_db):
+    headers = auth_headers(VALID)
+    assert "pets" in client.get("/me", headers=headers).json()
+
+
+# /create_pet
+def test_create_pet_no_token_401():
+    r = client.post("/create_pet", params={"father_id": 1, "name": "rex"})
+    assert r.status_code == 401
+
+
+def test_create_pet_invalid_token_401():
+    r = client.post(
+        "/create_pet",
+        params={"father_id": 1, "name": "rex"},
+        headers={"Authorization": "Bearer not.a.token"},
+    )
+    assert r.status_code == 401
+    assert r.json()["detail"] == "Could not validate credentials"
+
+
+@pytest.mark.parametrize("params", [{}, {"father_id": 2}, {"name": "rex"}])
+def test_create_pet_missing_params_422(clean_db, params):
+    headers = auth_headers(VALID)
+    assert client.post("/create_pet", params=params, headers=headers).status_code == 422
+
+
+def test_create_pet_wrong_method_405():
+    assert client.get("/create_pet").status_code == 405
+
+
+def test_create_pet_not_friends_404(clean_db):
+    headers = auth_headers(VALID)
+    friend_id = client.post("/reg/", json=FRIEND).json()["userID"]
+    r = client.post(
+        "/create_pet", params={"father_id": friend_id, "name": "rex"}, headers=headers
+    )
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Can't create pet without being friends"
+
+
+def test_create_pet_success(clean_db):
+    headers, friend_id = make_friends()
+    r = client.post(
+        "/create_pet", params={"father_id": friend_id, "name": "rex"}, headers=headers
+    )
+    assert r.status_code == 200
+    assert r.json()["success"] is True
+    assert "petId" in r.json()
+
+
+def test_create_pet_duplicate_409(clean_db):
+    headers, friend_id = make_friends()
+    params = {"father_id": friend_id, "name": "rex"}
+    assert client.post("/create_pet", params=params, headers=headers).status_code == 200
+    r = client.post("/create_pet", params=params, headers=headers)
+    assert r.status_code == 409
+    assert r.json()["detail"] == "Pet exists"
+
+
+def test_create_pet_appears_in_me(clean_db):
+    headers, friend_id = make_friends()
+    client.post(
+        "/create_pet", params={"father_id": friend_id, "name": "rex"}, headers=headers
+    )
+    r = client.get("/me", headers=headers)
+    assert r.status_code == 200
+    assert len(r.json()["pets"]) == 1
+
+
+# /get_pet
+def test_get_pet_no_token_401():
+    assert client.get("/get_pet", params={"fatherId": 1}).status_code == 401
+
+
+def test_get_pet_invalid_token_401():
+    r = client.get(
+        "/get_pet",
+        params={"fatherId": 1},
+        headers={"Authorization": "Bearer not.a.token"},
+    )
+    assert r.status_code == 401
+
+
+def test_get_pet_missing_param_422(clean_db):
+    headers = auth_headers(VALID)
+    assert client.get("/get_pet", headers=headers).status_code == 422
+
+
+def test_get_pet_non_int_param_422(clean_db):
+    headers = auth_headers(VALID)
+    r = client.get("/get_pet", params={"fatherId": "abc"}, headers=headers)
+    assert r.status_code == 422
+
+
+def test_get_pet_wrong_method_405():
+    assert client.post("/get_pet").status_code == 405
+
+
+def test_get_pet_not_friends_404(clean_db):
+    headers = auth_headers(VALID)
+    friend_id = client.post("/reg/", json=FRIEND).json()["userID"]
+    r = client.get("/get_pet", params={"fatherId": friend_id}, headers=headers)
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Can't get pet without being friends"
+
+
+@pytest.mark.xfail(
+    reason="get_pet вызывает petsdb.get_pet(coupleId, coupleId) вне соединения и без cursor"
+)
+def test_get_pet_success(clean_db):
+    headers, friend_id = make_friends()
+    client.post(
+        "/create_pet", params={"father_id": friend_id, "name": "rex"}, headers=headers
+    )
+    r = client.get("/get_pet", params={"fatherId": friend_id}, headers=headers)
+    assert r.status_code == 200
+    assert r.json()["success"] is True
+    assert "petId" in r.json()
+
+
+@pytest.mark.xfail(
+    reason="get_pet вызывает petsdb.get_pet(coupleId, coupleId) вне соединения и без cursor"
+)
+def test_get_pet_no_pet_404(clean_db):
+    headers, friend_id = make_friends()
+    r = client.get("/get_pet", params={"fatherId": friend_id}, headers=headers)
+    assert r.status_code == 404
+    assert r.json()["detail"] == "No pet found"

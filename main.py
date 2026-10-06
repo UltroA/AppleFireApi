@@ -6,7 +6,7 @@ from database import users as usersdb
 from database import friends as friendsdb
 from database import pets as petsdb
 from database.db import pool
-from routers import auth, users, friends
+from routers import auth, users, friends, pets
 
 
 @asynccontextmanager
@@ -24,6 +24,7 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(friends.router)
+app.include_router(pets.router)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

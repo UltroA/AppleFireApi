@@ -6,7 +6,7 @@ def create_table_pets(cursor: psycopg.cursor) -> bool:
             CREATE TABLE IF NOT EXISTS
             pets (
             petId BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-            coupleId BIGINT references couples(coupleId) NOT NULL,
+            coupleId BIGINT UNIQUE references couples(coupleId) NOT NULL,
             name VARCHAR(16)  NOT NULL,
             dateStarted DATE NOT NULL DEFAULT CURRENT_TIMESTAMP,
             isAlive BOOLEAN NOT NULL DEFAULT TRUE,
@@ -16,11 +16,13 @@ def create_table_pets(cursor: psycopg.cursor) -> bool:
 
 def create_pet(cursor: psycopg.cursor, coupleId, name: str) -> int | None:
     cursor.execute("""
-            INSERT INTO pets(coupleid, name) 
-            VALUES (%s, %s)
-            ON CONFLICT DO NOTHING
+            INSERT INTO pets (coupleid, name)
+            SELECT %s, %s
+            WHERE NOT EXISTS (
+                SELECT 1 FROM pets WHERE coupleid = %s
+            )
             RETURNING petid;
-            """, (coupleId, name))
+            """, (coupleId, name, coupleId))
     row = cursor.fetchone()
     return row[0] if row else None
 
@@ -29,6 +31,18 @@ def get_pet(cursor: psycopg.cursor, coupleId: int) -> int | None:
     cursor.execute("""
             SELECT * FROM pets
             WHERE coupleId = %s
-            """, coupleId)
+            """, (coupleId,))
     row = cursor.fetchone()
     return row if row else None
+
+
+def get_all_pets(cursor: psycopg.cursor, userId: int) -> list[tuple] | None:
+    pets = cursor.execute("""
+            SELECT * FROM pets 
+            WHERE coupleId IN (
+                SELECT coupleId FROM couples 
+                WHERE fatherid = %s OR motherid = %s
+            );
+    """, (userId, userId)).fetchall()
+    return pets if pets else None
+
