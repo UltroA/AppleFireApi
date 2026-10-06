@@ -66,16 +66,6 @@ def get_all_couples(cursor: psycopg.cursor, userId: int) -> list[int]:
     return couples
 
 
-def check_friend(cursor: psycopg.cursor, user_id: int, coupleId) -> bool:
-    row = cursor.execute("""
-            SELECT motherId, fatherId FROM couples 
-            WHERE coupleId = %s;   
-            """, coupleId).fetchall()
-    if user_id in row:
-        return True
-    return False
-
-
 def get_couple_id(cursor: psycopg.cursor, mother_id: int, father_id: int) -> int | None:
     coupleid = cursor.execute(
         """
